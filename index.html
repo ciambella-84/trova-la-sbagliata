@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trova la Sbagliata</title>
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--tx:#1d1b18;--mu:#6d685f;--ac:#e5484d;--ok:#2e9e5b;--bd:#e3dfd6;--bt:#1d1b18;--bt-tx:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#141414;--card:#201f1d;--tx:#f2efe8;--mu:#a09a8e;--bd:#33312d;--bt:#f2efe8;--bt-tx:#141414}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.4}
+#app{max-width:480px;margin:0 auto;padding:calc(18px + env(safe-area-inset-top,0px)) 16px calc(40px + env(safe-area-inset-bottom,0px))}
+h1{font-size:26px;margin:6px 0 2px;letter-spacing:-.5px}
+h2{font-size:21px;margin:14px 0 10px}
+.mu{color:var(--mu);font-size:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:16px;margin:12px 0}
+button,input{font:inherit}
+button{border:0;border-radius:14px;padding:14px 18px;background:var(--bt);color:var(--bt-tx);font-weight:600;width:100%;cursor:pointer;margin-top:8px}
+button:disabled{opacity:.45}
+input{width:100%;padding:13px 14px;border-radius:12px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);margin-bottom:4px}
+.opt{background:var(--card);color:var(--tx);border:2px solid var(--bd);font-size:19px;padding:22px 14px;margin-top:12px;text-align:center}
+.opt.sel{border-color:var(--ac)}
+.opt.bad{border-color:var(--ac);background:color-mix(in srgb,var(--ac) 14%,var(--card))}
+.opt.good{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,var(--card))}
+.q{font-size:22px;font-weight:700;margin:6px 0 4px}
+.tag{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--ac);text-transform:uppercase}
+.row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--bd)}
+.row:last-child{border:0}
+.bar{height:6px;background:var(--bd);border-radius:6px;overflow:hidden;margin:8px 0}
+.bar i{display:block;height:100%;background:var(--ac)}
+.sec{background:transparent;color:var(--mu);border:1px solid var(--bd)}
+.code{font-size:40px;font-weight:800;letter-spacing:8px;text-align:center;margin:4px 0}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const N=10;
+const Q=[
+{q:"Qual è la capitale della Francia?",o:["Parigi","Lione"],w:1},
+{q:"Quanti giorni ha un anno bisestile?",o:["366","365"],w:1},
+{q:"Chi ha dipinto la Gioconda?",o:["Leonardo da Vinci","Michelangelo"],w:1},
+{q:"Quale di questi animali è un mammifero?",o:["Delfino","Squalo"],w:1},
+{q:"Qual è il pianeta più vicino al Sole?",o:["Mercurio","Venere"],w:1},
+{q:"Chi ha scritto la Divina Commedia?",o:["Boccaccio","Dante Alighieri"],w:0},
+{q:"Quanti giocatori ha in campo una squadra di calcio?",o:["11","12"],w:1},
+{q:"Chi ha vinto i Mondiali di calcio del 2006?",o:["Italia","Francia"],w:1},
+{q:"Qual è il simbolo chimico dell’oro?",o:["Au","Ag"],w:1},
+{q:"Quale di questi aerei ha quattro motori?",o:["Airbus A380","Boeing 737"],w:1},
+{q:"Chi ha creato Minecraft?",o:["Markus “Notch” Persson","Gabe Newell"],w:1},
+{q:"Quale console è di Nintendo?",o:["Switch","PlayStation"],w:1},
+{q:"Quante corde ha una chitarra classica?",o:["6","8"],w:1},
+{q:"Qual è l’oceano più grande?",o:["Pacifico","Atlantico"],w:1},
+{q:"Quanti lati ha un esagono?",o:["6","8"],w:1},
+{q:"Qual è il fiume più lungo d’Italia?",o:["Po","Tevere"],w:1},
+{q:"In quale sport si usa la racchetta?",o:["Tennis","Pallavolo"],w:1},
+{q:"Chi ha fondato Microsoft?",o:["Bill Gates","Steve Jobs"],w:1},
+{q:"Quale metallo è liquido a temperatura ambiente?",o:["Mercurio","Ferro"],w:1},
+{q:"Quale di questi animali sa volare?",o:["Pipistrello","Pinguino"],w:1}
+];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let peer=null,hc=null,conns={},S=null,me=null,isHost=false,players={},code="",msg="",myName="";
+try{myName=localStorage.getItem("tls-name")||""}catch(e){}
+
+const mkOrder=()=>[...Q.keys()].sort(()=>Math.random()-.5).slice(0,N).map(i=>({i,f:Math.random()<.5?1:0}));
+const mkCode=()=>{const c="ABCDEFGHJKLMNPQRSTUVWXYZ";let s="";for(let i=0;i<4;i++)s+=c[Math.floor(Math.random()*c.length)];return s};
+
+function score(p){let n=0;const a=p.a||{};for(const r in a){const k=+r;if(k>S.round||(k===S.round&&S.phase==="question"))continue;if(Q[S.order[k].i].w===a[r])n++}return n}
+
+/* ---------- host ---------- */
+function bc(){
+  S.players=Object.values(players);
+  render();
+  for(const id in conns){const c=conns[id];if(c.open)c.send(S)}
+}
+function alive(p){return p.id===me||(conns[p.id]&&conns[p.id].open)}
+function auto(){
+  if(!isHost||!S||S.phase!=="question")return;
+  const l=Object.values(players).filter(alive);
+  if(l.length&&l.every(p=>p.a[S.round]!==undefined)){S.phase="reveal";bc()}
+}
+function startHost(name){
+  code=mkCode();
+  peer=new Peer("tls-"+code);
+  peer.on("open",id=>{
+    me=id;isHost=true;players[id]={id,name,a:{}};
+    S={phase:"lobby",round:0,order:mkOrder()};bc();
+  });
+  peer.on("connection",c=>{
+    conns[c.peer]=c;
+    c.on("data",d=>{
+      if(d.t==="join"){players[c.peer]={id:c.peer,name:String(d.name||"?").slice(0,16),a:(players[c.peer]||{a:{}}).a};bc()}
+      else if(d.t==="ans"){const p=players[c.peer];if(p&&S.phase==="question"&&p.a[S.round]===undefined){p.a[S.round]=d.c;bc();auto()}}
+    });
+    c.on("close",()=>{bc();auto()});
+  });
+  peer.on("error",e=>{
+    if(e.type==="unavailable-id"){peer.destroy();startHost(name)}
+    else{msg="Errore di connessione ("+e.type+"). Riprova.";S=null;render()}
+  });
+}
+const hostAct={
+  start(){S.phase="question";S.round=0},
+  reveal(){S.phase="reveal"},
+  next(){if(S.round+1>=N)S.phase="end";else{S.phase="question";S.round++}},
+  again(){for(const id in players)players[id].a={};S={phase:"lobby",round:0,order:mkOrder()}}
+};
+
+/* ---------- client ---------- */
+function joinRoom(cd,name){
+  code=cd;
+  peer=new Peer();
+  peer.on("open",id=>{
+    me=id;
+    hc=peer.connect("tls-"+cd,{reliable:true});
+    const t=setTimeout(()=>{if(!S){msg="Stanza non trovata o host non raggiungibile.";render()}},12000);
+    hc.on("open",()=>hc.send({t:"join",name}));
+    hc.on("data",d=>{clearTimeout(t);S=d;render()});
+    hc.on("close",()=>{S=null;msg="Connessione con l’host persa. Rientra con il codice.";render()});
+  });
+  peer.on("error",e=>{msg=e.type==="peer-unavailable"?"Stanza non trovata. Controlla il codice.":"Errore di connessione ("+e.type+").";S=null;render()});
+}
+
+function answer(c){
+  if(!S||S.phase!=="question")return;
+  if(isHost){const p=players[me];if(p.a[S.round]===undefined){p.a[S.round]=c;bc();auto()}}
+  else if(hc&&hc.open)hc.send({t:"ans",c});
+}
+
+/* ---------- ui ---------- */
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]");if(!b)return;
+  const a=b.dataset.act;
+  if(a==="create"||a==="join"){
+    const name=($("#nm").value||"").trim().slice(0,16);
+    const cd=($("#cd")?$("#cd").value:"").trim().toUpperCase();
+    if(!name){msg="Scrivi prima il tuo nome.";render();return}
+    if(a==="join"&&cd.length!==4){msg="Inserisci il codice di 4 lettere.";render();return}
+    myName=name;try{localStorage.setItem("tls-name",name)}catch(x){}
+    msg="Connessione in corso…";render();
+    a==="create"?startHost(name):joinRoom(cd,name);
+  }else if(a==="pick")answer(+b.dataset.c);
+  else if(a==="share"){
+    const url=location.href.split("#")[0]+"#"+code;
+    if(navigator.share)navigator.share({title:"Trova la sbagliata",text:"Entra nella mia partita! Codice: "+code,url}).catch(()=>{});
+    else if(navigator.clipboard)navigator.clipboard.writeText(url).then(()=>{b.textContent="Link copiato ✔️"});
+  }
+  else if(isHost&&hostAct[a]){hostAct[a]();bc();if(a==="start"||a==="next")auto()}
+});
+
+function board(){
+  const l=S.players.map(p=>({n:p.name,s:score(p),me:p.id===me,off:!(p.id===me||isHost&&alive(p)||!isHost)})).sort((x,y)=>y.s-x.s);
+  const medal=["🥇","🥈","🥉"];
+  return `<div class="card">${l.map((p,i)=>`<div class="row"><span>${S.phase==="lobby"?"":(medal[i]||(i+1)+".")+" "}${esc(p.n)}${p.me?" (tu)":""}</span>${S.phase==="lobby"?"":`<b>${p.s}</b>`}</div>`).join("")}</div>`;
+}
+
+function render(){
+  const app=$("#app");
+  const head=`<span class="tag">Gioco di gruppo</span><h1>Trova la sbagliata ❌</h1>`;
+  if(!S){
+    let h=head+`<p class="mu">Ogni domanda ha due risposte: tocca quella <b>sbagliata</b>. Ognuno gioca dal proprio telefono, senza account.</p>`;
+    const hash=(location.hash||"").replace("#","").toUpperCase().slice(0,4);
+    h+=`<div class="card"><input id="nm" maxlength="16" placeholder="Il tuo nome" value="${esc(myName)}"><button data-act="create">Crea una partita</button></div>`;
+    h+=`<div class="card"><input id="cd" maxlength="4" placeholder="Codice stanza" value="${esc(hash)}" autocapitalize="characters"><button class="sec" data-act="join">Entra con il codice</button></div>`;
+    if(msg)h+=`<p class="mu">${esc(msg)}</p>`;
+    app.innerHTML=h;return;
+  }
+  let h=head;
+  if(S.phase==="lobby"){
+    h+=`<div class="card"><div class="mu" style="text-align:center">Codice stanza</div><div class="code">${esc(code)}</div><button class="sec" data-act="share">Condividi il link</button></div>`;
+    h+=`<h2>Giocatori (${S.players.length})</h2>`+board();
+    h+=isHost?`<button data-act="start">Avvia partita</button><p class="mu">Tieni aperta questa pagina: sei tu a far girare la partita.</p>`:`<p class="mu" style="text-align:center">Aspetta che l’host avvii la partita…</p>`;
+  }else if(S.phase==="question"||S.phase==="reveal"){
+    const o=S.order[S.round],q=Q[o.i],rev=S.phase==="reveal",ord=o.f?[1,0]:[0,1];
+    const m=S.players.find(p=>p.id===me),my=m?(m.a||{})[S.round]:undefined;
+    const done=S.players.filter(p=>(p.a||{})[S.round]!==undefined).length;
+    h+=`<div class="bar"><i style="width:${(S.round+(rev?1:0))/N*100}%"></i></div><div class="mu">Domanda ${S.round+1} di ${N}</div>`;
+    h+=`<div class="q">${esc(q.q)}</div><div class="mu">Tocca la risposta SBAGLIATA</div>`;
+    h+=ord.map(c=>{
+      let cls="opt";
+      if(rev)cls+=c===q.w?" bad":" good";else if(my===c)cls+=" sel";
+      return `<button class="${cls}" data-act="pick" data-c="${c}" ${(rev||my!==undefined)?"disabled":""}>${esc(q.o[c])}${rev?(c===q.w?" ❌":" ✅"):""}</button>`;
+    }).join("");
+    if(!rev){
+      h+=`<p class="mu" style="text-align:center">${my!==undefined?"Risposta inviata ✔️":"Scegli!"} · hanno risposto ${done}/${S.players.length}</p>`;
+      if(isHost)h+=`<button class="sec" data-act="reveal">Mostra la soluzione</button>`;
+    }else{
+      h+=`<div class="card">`+S.players.map(p=>{const a=(p.a||{})[S.round];return `<div class="row"><span>${esc(p.name)}${p.id===me?" (tu)":""}</span><span>${a===undefined?"⏱️":a===q.w?"✅":"❌"}</span></div>`}).join("")+`</div>`;
+      h+=`<h2>Classifica</h2>`+board();
+      h+=isHost?`<button data-act="next">${S.round+1>=N?"Vedi risultato finale":"Prossima domanda"}</button>`:`<p class="mu" style="text-align:center">Aspetta il prossimo giro…</p>`;
+    }
+  }else{
+    h+=`<h2>Partita finita 🎉</h2>`+board();
+    h+=isHost?`<button data-act="again">Nuova partita (stessi giocatori)</button>`:`<p class="mu" style="text-align:center">L’host può far partire un’altra partita.</p>`;
+  }
+  app.innerHTML=h;
+}
+render();
+</script>
+</body>
+</html>
